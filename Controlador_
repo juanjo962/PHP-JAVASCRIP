@@ -1,0 +1,93 @@
+    /**
+     * @Route("/save/anexo/nefro/", name="save_anexo_nefro", options={"expose"=true})
+     * @Method("POST")
+     */
+    public function saveAnexoNefroAction() {
+    $em = $this->getDoctrine()->getManager();
+    $user = $this->getUser();  // Usuario actual
+    $fechaActual = new \DateTime();  // Fecha actual
+    $request = $this->get('request');
+    $evaluacionDetalle = $request->get('texto');
+    $idHistorialClinico = $request->get('idHistorialClinico');
+
+    try {
+        // Buscar el historial clínico correspondiente
+        $HistorialClinico = $em->getRepository('MinsalSeguimientoBundle:SecHistorialClinico')->find($idHistorialClinico);
+        $SecObservacionPac = new SecObservacionesRelevantesDialisis();
+        $SecObservacionPac->setIdHistorialClinico($HistorialClinico);
+        $SecObservacionPac->setObservacion($evaluacionDetalle);  // Guardar la observación
+        $SecObservacionPac->setIdUsuarioRegistra($user);  // Asignar el usuario que hizo el registro
+        $SecObservacionPac->setFechaHoraRegistra($fechaActual);  // Asignar la fecha actual
+        $SecObservacionPac->setActivo(true);
+        $em->persist($SecObservacionPac);
+        $em->flush();
+        $result['success']           = true;
+        $result['idDoctor']          = $SecObservacionPac->getIdUsuarioRegistra()->getId();
+        $result['usuarioRegistro']   = $SecObservacionPac->getIdUsuarioRegistra()->getIdEmpleado()->getNombreempleado();
+        $result['fechaHoraRegistro'] = $SecObservacionPac->getFechaHoraRegistra()->format('d/m/Y H:i');
+        $result['idObservacion'] = $SecObservacionPac->getId();
+
+
+    } catch (\Exception $e) {
+        $result['success']           = true;
+        $result['errorMsg']          = $e->getMessage();
+    }
+
+    // Devolver la respuesta en formato JSON
+    return new Response(json_encode($result));
+    }
+
+        /**
+     * @Route("/delete/observacion/{idObservacion}", name="delete_observacion_nefro", options={"expose"=true})
+     * @Method("POST")
+     */
+    public function deleteObservacionNefroAction($idObservacion) {
+        $em = $this->getDoctrine()->getManager();
+        $user = $this->getUser();  // Usuario actual
+        $fechaActual = new \DateTime();  // Fecha actual
+        $request = $this->get('request');
+        
+        $observation = $em->getRepository('MinsalSeguimientoBundle:SecObservacionesRelevantesDialisis')->find($idObservacion);
+        if ($observation) {
+            $observation->setIdUsuarioElimina($user);  // Asignar el usuario que hizo el registro
+            $observation->setFechaHoraElimina($fechaActual);  // Asignar la fecha actual
+            $observation->setActivo(false);
+            $em->flush();
+
+            return new JsonResponse(['success' => true]);
+        } else {
+            return new JsonResponse(['success' => false, 'errorMsg' => 'Observation not found.']);
+        }
+    }
+
+    /**
+     * @Route("/nefro/observaciones/{idHistorialClinico}", name="get_observaciones_nefro", options={"expose"=true})
+     * @Method("GET")
+     */
+    public function getObservacionesNefroAction($idHistorialClinico) {
+        try {
+        $em = $this->getDoctrine()->getManager();
+
+        // Get only active observations for the given clinical history
+        $activeObservations = $em->getRepository('MinsalSeguimientoBundle:SecObservacionesRelevantesDialisis')
+                                ->findBy([
+                                    'idHistorialClinico' => $idHistorialClinico,
+                                    'activo' => true
+                                ]);
+        $observations = [];
+        foreach ($activeObservations as $observation) {
+            $observations[] = [
+                'usuarioRegistro' => $observation->getIdUsuarioRegistra()->getIdEmpleado()->getNombreempleado(),
+                'fechaHoraRegistro' => $observation->getFechaHoraRegistra()->format('d/m/Y H:i'),
+                'observacion' => $observation->getObservacion(),
+                'idObservacion' => $observation->getId(),  // The unique ID for the observation
+                'idDoctor'  =>$observation->getIdUsuarioRegistra()->getId()
+            ];
+        }
+        return new Response(json_encode($observations));
+    } catch (\Exception $e) {
+        $result['success'] = false;
+        $result['error_message'] = $e->getMessage();
+        return new Response(json_encode($result));
+    }
+    }
